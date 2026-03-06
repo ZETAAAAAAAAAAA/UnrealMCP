@@ -5,6 +5,13 @@
 #include "NiagaraComponent.h"
 #include "NiagaraSystem.h"
 #include "NiagaraActor.h"
+#include "NiagaraEmitter.h"
+#include "NiagaraEmitterHandle.h"
+#include "NiagaraScript.h"
+#include "NiagaraRendererProperties.h"
+#include "NiagaraSimulationStageBase.h"
+#include "NiagaraTypes.h"
+#include "NiagaraParameterStore.h"
 #include "Engine/World.h"
 #include "Kismet/GameplayStatics.h"
 #include "AssetRegistry/AssetRegistryModule.h"
@@ -72,6 +79,10 @@ TSharedPtr<FJsonObject> FEpicUnrealMCPNiagaraCommands::HandleCommand(const FStri
     else if (CommandType == TEXT("get_niagara_assets"))
     {
         return HandleGetNiagaraAssets(Params);
+    }
+    else if (CommandType == TEXT("get_niagara_asset_details"))
+    {
+        return HandleGetNiagaraAssetDetails(Params);
     }
     else
     {
@@ -850,4 +861,320 @@ UNiagaraComponent* FEpicUnrealMCPNiagaraCommands::FindNiagaraComponent(const FSt
 UNiagaraSystem* FEpicUnrealMCPNiagaraCommands::LoadNiagaraSystemAsset(const FString& AssetPath)
 {
     return LoadObject<UNiagaraSystem>(nullptr, *AssetPath);
+}
+
+// ============================================================================
+// Asset Analysis Implementation (New Feature)
+// ============================================================================
+
+TSharedPtr<FJsonObject> FEpicUnrealMCPNiagaraCommands::HandleGetNiagaraAssetDetails(const TSharedPtr<FJsonObject>& Params)
+{
+    TSharedPtr<FJsonObject> Result = MakeShareable(new FJsonObject);
+    
+    // Get asset path
+    FString AssetPath;
+    if (!Params->TryGetStringField(TEXT("asset_path"), AssetPath))
+    {
+        Result->SetBoolField(TEXT("success"), false);
+        Result->SetStringField(TEXT("error"), TEXT("Missing required parameter: asset_path"));
+        return Result;
+    }
+    
+    // Load the system
+    UNiagaraSystem* NiagaraSystem = LoadNiagaraSystemAsset(AssetPath);
+    if (!NiagaraSystem)
+    {
+        Result->SetBoolField(TEXT("success"), false);
+        Result->SetStringField(TEXT("error"), FString::Printf(TEXT("Failed to load Niagara system: %s"), *AssetPath));
+        return Result;
+    }
+    
+    // Get detail level (default: overview)
+    FString DetailLevel = TEXT("overview");
+    Params->TryGetStringField(TEXT("detail_level"), DetailLevel);
+    
+    // Parse include sections
+    TArray<FString> IncludeSections = ParseIncludeSections(Params);
+    
+    // Get requested emitters (if specified)
+    TArray<FString> RequestedEmitters;
+    const TArray<TSharedPtr<FJsonValue>>* EmittersArray;
+    if (Params->TryGetArrayField(TEXT("emitters"), EmittersArray))
+    {
+        for (const auto& Val : *EmittersArray)
+        {
+            RequestedEmitters.Add(Val->AsString());
+        }
+    }
+    
+    // Build response based on detail level
+    Result->SetStringField(TEXT("asset_name"), NiagaraSystem->GetName());
+    Result->SetStringField(TEXT("asset_path"), AssetPath);
+    Result->SetNumberField(TEXT("emitter_count"), NiagaraSystem->GetNumEmitters());
+    
+    // Emitter data
+    TArray<TSharedPtr<FJsonValue>> EmittersJson;
+    
+    for (FNiagaraEmitterHandle& Handle : NiagaraSystem->GetEmitterHandles())
+    {
+        if (!Handle.IsValid()) continue;
+        
+        FString EmitterName = Handle.GetName().ToString();
+        
+        // Filter by requested emitters if specified
+        if (RequestedEmitters.Num() > 0 && !RequestedEmitters.Contains(EmitterName))
+        {
+            continue;
+        }
+        
+        if (DetailLevel == TEXT("overview"))
+        {
+            // Basic info only
+            TSharedPtr<FJsonObject> EmitterOverview = MakeShareable(new FJsonObject);
+            EmitterOverview->SetStringField(TEXT("name"), EmitterName);
+            EmitterOverview->SetBoolField(TEXT("is_enabled"), Handle.GetIsEnabled());
+            
+            FString ModeStr = TEXT("Standard");
+            if (Handle.GetEmitterMode() == ENiagaraEmitterMode::Stateless)
+            {
+                ModeStr = TEXT("Stateless");
+            }
+            EmitterOverview->SetStringField(TEXT("mode"), ModeStr);
+            
+            EmittersJson.Add(MakeShareable(new FJsonValueObject(EmitterOverview)));
+        }
+        else
+        {
+            // Full details
+            TSharedPtr<FJsonObject> EmitterDetails = GetEmitterDetails(Handle, NiagaraSystem, IncludeSections);
+            EmittersJson.Add(MakeShareable(new FJsonValueObject(EmitterDetails)));
+        }
+    }
+    
+    Result->SetArrayField(TEXT("emitters"), EmittersJson);
+    Result->SetBoolField(TEXT("success"), true);
+    
+    return Result;
+}
+
+TSharedPtr<FJsonObject> FEpicUnrealMCPNiagaraCommands::GetNiagaraSystemOverview(UNiagaraSystem* System)
+{
+    TSharedPtr<FJsonObject> Overview = MakeShareable(new FJsonObject);
+    
+    Overview->SetStringField(TEXT("name"), System->GetName());
+    Overview->SetNumberField(TEXT("emitter_count"), System->GetNumEmitters());
+    
+    return Overview;
+}
+
+TSharedPtr<FJsonObject> FEpicUnrealMCPNiagaraCommands::GetEmitterDetails(FNiagaraEmitterHandle& Handle, 
+    UNiagaraSystem* System, const TArray<FString>& IncludeSections)
+{
+    TSharedPtr<FJsonObject> EmitterJson = MakeShareable(new FJsonObject);
+    
+    // Basic info
+    FString EmitterName = Handle.GetName().ToString();
+    EmitterJson->SetStringField(TEXT("name"), EmitterName);
+    EmitterJson->SetBoolField(TEXT("is_enabled"), Handle.GetIsEnabled());
+    
+    FString ModeStr = TEXT("Standard");
+    if (Handle.GetEmitterMode() == ENiagaraEmitterMode::Stateless)
+    {
+        ModeStr = TEXT("Stateless");
+    }
+    EmitterJson->SetStringField(TEXT("mode"), ModeStr);
+    
+    // Get emitter data
+    FVersionedNiagaraEmitterData* EmitterData = Handle.GetEmitterData();
+    if (!EmitterData)
+    {
+        return EmitterJson;
+    }
+    
+    // Scripts
+    if (ShouldInclude(IncludeSections, TEXT("scripts")) || ShouldInclude(IncludeSections, TEXT("all")))
+    {
+        TSharedPtr<FJsonObject> ScriptsJson = MakeShareable(new FJsonObject);
+        
+        if (EmitterData->SpawnScriptProps.Script)
+        {
+            ScriptsJson->SetObjectField(TEXT("spawn"), GetScriptDetails(EmitterData->SpawnScriptProps.Script));
+        }
+        if (EmitterData->UpdateScriptProps.Script)
+        {
+            ScriptsJson->SetObjectField(TEXT("update"), GetScriptDetails(EmitterData->UpdateScriptProps.Script));
+        }
+        
+        // Event handlers
+        TArray<TSharedPtr<FJsonValue>> EventHandlersJson;
+        for (const FNiagaraEventScriptProperties& EventHandler : EmitterData->GetEventHandlers())
+        {
+            if (EventHandler.Script)
+            {
+                TSharedPtr<FJsonObject> EventJson = GetScriptDetails(EventHandler.Script);
+                EventJson->SetStringField(TEXT("execution_mode"), 
+                    EventHandler.ExecutionMode == EScriptExecutionMode::EveryParticle ? TEXT("EveryParticle") : 
+                    (EventHandler.ExecutionMode == EScriptExecutionMode::SpawnedParticles ? TEXT("SpawnedParticles") : TEXT("SingleParticle")));
+                EventHandlersJson.Add(MakeShareable(new FJsonValueObject(EventJson)));
+            }
+        }
+        if (EventHandlersJson.Num() > 0)
+        {
+            ScriptsJson->SetArrayField(TEXT("event_handlers"), EventHandlersJson);
+        }
+        
+        EmitterJson->SetObjectField(TEXT("scripts"), ScriptsJson);
+    }
+    
+    // Renderers
+    if (ShouldInclude(IncludeSections, TEXT("renderers")) || ShouldInclude(IncludeSections, TEXT("all")))
+    {
+        TArray<TSharedPtr<FJsonValue>> RenderersJson;
+        for (UNiagaraRendererProperties* Renderer : EmitterData->RendererProperties)
+        {
+            if (Renderer)
+            {
+                RenderersJson.Add(MakeShareable(new FJsonValueObject(GetRendererDetails(Renderer))));
+            }
+        }
+        EmitterJson->SetArrayField(TEXT("renderers"), RenderersJson);
+        EmitterJson->SetNumberField(TEXT("renderer_count"), RenderersJson.Num());
+    }
+    
+    // Simulation stages
+    if (ShouldInclude(IncludeSections, TEXT("simulation_stages")) || ShouldInclude(IncludeSections, TEXT("all")))
+    {
+        TArray<TSharedPtr<FJsonValue>> StagesJson;
+        for (UNiagaraSimulationStageBase* Stage : EmitterData->GetSimulationStages())
+        {
+            if (Stage)
+            {
+                StagesJson.Add(MakeShareable(new FJsonValueObject(GetSimulationStageDetails(Stage))));
+            }
+        }
+        EmitterJson->SetArrayField(TEXT("simulation_stages"), StagesJson);
+        EmitterJson->SetNumberField(TEXT("simulation_stage_count"), StagesJson.Num());
+    }
+    
+    // Parameters (simplified version - just count and names)
+    if (ShouldInclude(IncludeSections, TEXT("parameters")) || ShouldInclude(IncludeSections, TEXT("all")))
+    {
+        TArray<TSharedPtr<FJsonValue>> ParametersJson;
+        
+        // From spawn script
+        if (EmitterData->SpawnScriptProps.Script)
+        {
+            // Note: Full parameter extraction would require accessing the script's parameter store
+            // This is a simplified version
+            TSharedPtr<FJsonObject> ParamInfo = MakeShareable(new FJsonObject);
+            ParamInfo->SetStringField(TEXT("source"), TEXT("spawn_script"));
+            ParamInfo->SetStringField(TEXT("script_name"), EmitterData->SpawnScriptProps.Script->GetName());
+            ParametersJson.Add(MakeShareable(new FJsonValueObject(ParamInfo)));
+        }
+        
+        EmitterJson->SetArrayField(TEXT("parameters"), ParametersJson);
+    }
+    
+    return EmitterJson;
+}
+
+TSharedPtr<FJsonObject> FEpicUnrealMCPNiagaraCommands::GetScriptDetails(UNiagaraScript* Script)
+{
+    TSharedPtr<FJsonObject> ScriptJson = MakeShareable(new FJsonObject);
+    
+    if (!Script)
+    {
+        return ScriptJson;
+    }
+    
+    ScriptJson->SetStringField(TEXT("name"), Script->GetName());
+    
+    // Script usage type
+    FString UsageStr = TEXT("Unknown");
+    switch (Script->GetUsage())
+    {
+        case ENiagaraScriptUsage::Function: UsageStr = TEXT("Function"); break;
+        case ENiagaraScriptUsage::Module: UsageStr = TEXT("Module"); break;
+        case ENiagaraScriptUsage::DynamicInput: UsageStr = TEXT("DynamicInput"); break;
+        case ENiagaraScriptUsage::ParticleSpawnScript: UsageStr = TEXT("ParticleSpawn"); break;
+        case ENiagaraScriptUsage::ParticleUpdateScript: UsageStr = TEXT("ParticleUpdate"); break;
+        case ENiagaraScriptUsage::EmitterSpawnScript: UsageStr = TEXT("EmitterSpawn"); break;
+        case ENiagaraScriptUsage::EmitterUpdateScript: UsageStr = TEXT("EmitterUpdate"); break;
+        case ENiagaraScriptUsage::SystemSpawnScript: UsageStr = TEXT("SystemSpawn"); break;
+        case ENiagaraScriptUsage::SystemUpdateScript: UsageStr = TEXT("SystemUpdate"); break;
+        case ENiagaraScriptUsage::ParticleEventScript: UsageStr = TEXT("ParticleEvent"); break;
+        default: break;
+    }
+    ScriptJson->SetStringField(TEXT("usage"), UsageStr);
+    
+    return ScriptJson;
+}
+
+TSharedPtr<FJsonObject> FEpicUnrealMCPNiagaraCommands::GetRendererDetails(UNiagaraRendererProperties* Renderer)
+{
+    TSharedPtr<FJsonObject> RendererJson = MakeShareable(new FJsonObject);
+    
+    if (!Renderer)
+    {
+        return RendererJson;
+    }
+    
+    // Renderer type
+    FString RendererType = Renderer->GetClass()->GetName();
+    RendererType.RemoveFromEnd(TEXT("Properties"));
+    RendererJson->SetStringField(TEXT("type"), RendererType);
+    
+    // Common properties
+    RendererJson->SetBoolField(TEXT("is_enabled"), Renderer->GetIsEnabled());
+    
+    // Material info (if available)
+    // Note: Material access depends on renderer type
+    // This is a simplified version
+    
+    return RendererJson;
+}
+
+TSharedPtr<FJsonObject> FEpicUnrealMCPNiagaraCommands::GetSimulationStageDetails(UNiagaraSimulationStageBase* Stage)
+{
+    TSharedPtr<FJsonObject> StageJson = MakeShareable(new FJsonObject);
+    
+    if (!Stage)
+    {
+        return StageJson;
+    }
+    
+    StageJson->SetStringField(TEXT("name"), Stage->GetName());
+    StageJson->SetBoolField(TEXT("enabled"), Stage->bEnabled);
+    
+    return StageJson;
+}
+
+TArray<FString> FEpicUnrealMCPNiagaraCommands::ParseIncludeSections(const TSharedPtr<FJsonObject>& Params)
+{
+    TArray<FString> IncludeSections;
+    
+    const TArray<TSharedPtr<FJsonValue>>* IncludeArray;
+    if (Params->TryGetArrayField(TEXT("include"), IncludeArray))
+    {
+        for (const auto& Val : *IncludeArray)
+        {
+            IncludeSections.Add(Val->AsString().ToLower());
+        }
+    }
+    else
+    {
+        // Default: include all
+        IncludeSections.Add(TEXT("all"));
+    }
+    
+    return IncludeSections;
+}
+
+bool FEpicUnrealMCPNiagaraCommands::ShouldInclude(const TArray<FString>& IncludeSections, const FString& Section)
+{
+    if (IncludeSections.Contains(TEXT("all")))
+    {
+        return true;
+    }
+    return IncludeSections.Contains(Section.ToLower());
 }

@@ -153,7 +153,62 @@ get_material_function_content("/Engine/Functions/Engine_MaterialFunctions01/Text
 | **Asset Listing** | `get_assets` (replaces `get_available_materials`, `get_material_functions`) |
 | **Texture Import** | `import_texture`, `import_fbx` |
 | **Mesh** | `create_static_mesh_from_data` |
+| **Niagara** | `get_niagara_asset_details` |
 | **Viewport** | `get_viewport_screenshot` |
+
+## Niagara Asset Analysis
+
+分层获取Niagara系统资产详情，避免数据过载。
+
+### Overview Mode (Default)
+
+```python
+# 快速概览 - 只返回emitter列表
+get_niagara_asset_details("/Game/Effects/NS_Explosion")
+
+# Returns:
+{
+  "asset_name": "NS_Explosion",
+  "asset_path": "/Game/Effects/NS_Explosion",
+  "emitter_count": 5,
+  "emitters": [
+    {"name": "Sparks", "is_enabled": true, "mode": "Standard"},
+    {"name": "Smoke", "is_enabled": true, "mode": "Standard"},
+    {"name": "Flash", "is_enabled": false, "mode": "Standard"},
+    {"name": "Debris", "is_enabled": true, "mode": "Stateless"},
+    {"name": "Shockwave", "is_enabled": true, "mode": "Standard"}
+  ]
+}
+```
+
+### Full Detail Mode
+
+```python
+# 获取特定emitter的完整信息
+get_niagara_asset_details(
+    "/Game/Effects/NS_Fire",
+    detail_level="full",
+    emitters=["Flame"],
+    include=["scripts", "renderers", "parameters"]
+)
+
+# 获取所有emitters的渲染器信息
+get_niagara_asset_details(
+    "/Game/Effects/NS_Complex",
+    detail_level="full",
+    include=["renderers"]
+)
+```
+
+### Include Options
+
+| Section | Description |
+|---------|-------------|
+| `scripts` | Spawn/Update/Event脚本信息 |
+| `renderers` | Sprite/Mesh/Ribbon/Light渲染器 |
+| `simulation_stages` | GPU/CPU模拟阶段 |
+| `parameters` | 暴露的参数列表 |
+| `all` | 包含以上所有（默认） |
 
 ## Legacy Tools (Removed)
 

@@ -2,7 +2,7 @@
 Unreal Render MCP Server
 
 专门用于Unreal Engine渲染操作的MCP服务器
-包含材质、纹理、网格导入相关的21个工具
+包含材质、纹理、网格导入、Niagara相关的22个工具
 
 工具列表:
 - 材质图构建 (1个): build_material_graph
@@ -13,6 +13,7 @@ Unreal Render MCP Server
   get_actor_properties, batch_spawn_actors, batch_delete_actors, batch_set_actors_properties
 - 纹理导入 (2个): import_texture, set_texture_properties
 - 网格导入 (2个): import_fbx, create_static_mesh_from_data
+- Niagara资产分析 (1个): get_niagara_asset_details
 - 视口截图 (1个): get_viewport_screenshot
 """
 
@@ -1260,6 +1261,109 @@ def batch_set_assets_properties(items: List[Dict[str, Any]]) -> Dict[str, Any]:
         return response or {"success": False, "message": "No response from Unreal"}
     except Exception as e:
         logger.error(f"batch_set_assets_properties error: {e}")
+        return {"success": False, "message": str(e)}
+
+
+# ============================================================================
+# Niagara Asset Analysis
+# ============================================================================
+
+@mcp.tool()
+def get_niagara_asset_details(
+    asset_path: str,
+    detail_level: str = "overview",
+    emitters: List[str] = None,
+    include: List[str] = None
+) -> Dict[str, Any]:
+    """
+    Get detailed information about a Niagara system asset.
+    Supports selective data retrieval to avoid overwhelming response size.
+    
+    Args:
+        asset_path: Path to the Niagara system asset (e.g., "/Game/Effects/NS_Fire")
+        detail_level: Level of detail - "overview" (default) or "full"
+        emitters: Optional list of emitter names to filter (e.g., ["Sparks", "Smoke"])
+                 If not provided, all emitters are included
+        include: Optional list of sections to include when detail_level="full"
+                Options: ["scripts", "renderers", "simulation_stages", "parameters", "all"]
+                Default is ["all"]
+    
+    Returns:
+        Dictionary containing asset information structured by detail level:
+        
+        For detail_level="overview" (lightweight, default):
+        {
+            "asset_name": "NS_Fire",
+            "asset_path": "/Game/Effects/NS_Fire",
+            "emitter_count": 3,
+            "emitters": [
+                {"name": "Flame", "is_enabled": true, "mode": "Standard"},
+                {"name": "Sparks", "is_enabled": true, "mode": "Standard"},
+                {"name": "Smoke", "is_enabled": false, "mode": "Standard"}
+            ]
+        }
+        
+        For detail_level="full" with include=["scripts", "renderers"]:
+        {
+            "asset_name": "NS_Fire",
+            "asset_path": "/Game/Effects/NS_Fire",
+            "emitter_count": 3,
+            "emitters": [
+                {
+                    "name": "Flame",
+                    "is_enabled": true,
+                    "mode": "Standard",
+                    "scripts": {
+                        "spawn": {"name": "...", "usage": "ParticleSpawn"},
+                        "update": {"name": "...", "usage": "ParticleUpdate"},
+                        "event_handlers": [...]
+                    },
+                    "renderers": [
+                        {"type": "SpriteRenderer", "is_enabled": true},
+                        {"type": "LightRenderer", "is_enabled": false}
+                    ],
+                    "renderer_count": 2
+                }
+            ]
+        }
+    
+    Examples:
+        # Get quick overview of a Niagara asset
+        get_niagara_asset_details("/Game/Effects/NS_Explosion")
+        
+        # Get full details for a specific emitter
+        get_niagara_asset_details(
+            "/Game/Effects/NS_Fire",
+            detail_level="full",
+            emitters=["Flame"],
+            include=["scripts", "parameters"]
+        )
+        
+        # Get only renderer information for all emitters
+        get_niagara_asset_details(
+            "/Game/Effects/NS_Complex",
+            detail_level="full",
+            include=["renderers"]
+        )
+    """
+    unreal = get_unreal_connection()
+    
+    params = {
+        "asset_path": asset_path,
+        "detail_level": detail_level
+    }
+    
+    if emitters is not None:
+        params["emitters"] = emitters
+    
+    if include is not None:
+        params["include"] = include
+    
+    try:
+        response = unreal.send_command("get_niagara_asset_details", params)
+        return response or {"success": False, "message": "No response from Unreal"}
+    except Exception as e:
+        logger.error(f"get_niagara_asset_details error: {e}")
         return {"success": False, "message": str(e)}
 
 
