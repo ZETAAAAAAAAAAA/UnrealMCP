@@ -10,8 +10,8 @@ from typing import AsyncIterator, Dict, Any
 
 from fastmcp import FastMCP
 
-from connection import reset_unreal_connection
-from tools import (
+from .connection import reset_unreal_connection
+from .tools import (
     # Material
     build_material_graph,
     compile_material,
@@ -40,13 +40,10 @@ from tools import (
     batch_create_assets,
     batch_set_assets_properties,
     # Niagara
-    get_niagara_asset_details,
-    update_niagara_asset,
-    analyze_stateless_compatibility,
-    convert_to_stateless,
-    get_niagara_module_graph,
-    get_niagara_script_asset,
-    update_niagara_script_asset,
+    get_niagara_graph,
+    update_niagara_graph,
+    get_niagara_emitter,
+    update_niagara_emitter,
     # Viewport
     get_viewport_screenshot,
 )

@@ -39,11 +39,11 @@ TA Agent 不只是被动响应工具调用，而是具备：
 ## 项目结构
 
 ```
-rendering-mcp/
-│
+TA Agent
+|
 ├── .codebuddy/                   # Agent 核心
 │   ├── agents/                   # Agent 定义
-│   │   └── TA- Agent.md
+│   │   └── TA-Agent.md
 │   │
 │   ├── rules/                    # 项目规则 (始终加载)
 │   │   └── mcp-development.mdc

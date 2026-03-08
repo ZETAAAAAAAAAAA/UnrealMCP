@@ -46,13 +46,10 @@ from asset import (
 )
 
 from niagara import (
-    get_niagara_asset_details,
-    update_niagara_asset,
-    analyze_stateless_compatibility,
-    convert_to_stateless,
-    get_niagara_module_graph,
-    get_niagara_script_asset,
-    update_niagara_script_asset,
+    get_niagara_graph,
+    update_niagara_graph,
+    get_niagara_emitter,
+    update_niagara_emitter,
 )
 
 from viewport import (
