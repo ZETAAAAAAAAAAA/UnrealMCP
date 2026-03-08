@@ -40,11 +40,11 @@
 
 ## 知识库
 
-参考 `agent/knowledge/` 目录获取领域知识：
+参考 `.codebuddy/knowledge/` 目录获取领域知识：
 - 材质函数
 - UE API 参考
 - Niagara 知识
 
 ## 技能
 
-参考 `agent/skills/` 目录获取工作流 SOP。
+参考 `.codebuddy/skills/` 目录获取工作流 SOP。

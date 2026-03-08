@@ -1,13 +1,8 @@
 # TA Agent Workspace
 
-**AI-Powered Technical Artist** - 一个具备专业 TA 能力的智能代理，MCP 是 Agent 改变世界的工具。
+**AI-Powered Technical Artist** - 一个具备专业 TA 能力的智能代理。
 
 ## 核心理念
-
-```
-传统: MCP Servers → AI 被动调用工具
-现在: TA Agent → MCP 是 Agent 的"手和眼"
-```
 
 TA Agent 不只是被动响应工具调用，而是具备：
 - **TA 领域知识**（材质、渲染、性能、管线）
@@ -15,7 +10,6 @@ TA Agent 不只是被动响应工具调用，而是具备：
 - **工具编排能力**（选择合适的 MCP 工具组合）
 - **学习迭代能力**（从结果中学习）
 
----
 
 ## 架构
 
@@ -47,13 +41,18 @@ TA Agent 不只是被动响应工具调用，而是具备：
 ```
 ta-agent-workspace/
 │
-├── agent/                        # Agent 核心
-│   ├── persona/                  # TA 身份定义
-│   │   └── ta_persona.md         # 角色设定、专业领域
+├── .codebuddy/                   # Agent 核心 (身份、知识、技能、工作流)
+│   ├── agents/                   # Agent 身份定义
+│   │   └── TA Agent.md           # TA 角色
+│   │
+│   ├── rules/                    # 工作规则 (自动应用)
+│   │   └── rendering-mcp-skills.mdc
+│   │
+│   ├── persona/                  # TA 身份详情
+│   │   └── ta_persona.md
 │   │
 │   ├── knowledge/                # 领域知识库
 │   │   ├── material-functions/   # 材质函数参考
-│   │   ├── niagara/              # Niagara 知识
 │   │   └── ue-api/               # UE API 参考
 │   │
 │   ├── skills/                   # 技能模块（工作流 SOP）
@@ -72,13 +71,20 @@ ta-agent-workspace/
 │       └── performance-audit/    # 性能审计
 │
 ├── mcps/                         # MCP 工具生态
-│   ├── renderdoc/                # RenderDoc 分析 MCP
+│   ├── renderdoc_mcp/            # RenderDoc 分析 MCP
 │   │   └── mcp_server/
 │   │       ├── server.py         # FastMCP 工具定义
 │   │       └── bridge/           # TCP 客户端
 │   │
-│   └── unreal-render/            # UE 创作类 MCP
-│       └── server.py             # FastMCP 工具定义
+│   └── unreal_render_mcp/        # UE 创作类 MCP (模块化)
+│       ├── server.py             # 入口
+│       ├── connection.py         # 连接管理
+│       ├── common.py             # 通用工具
+│       └── tools/                # 工具模块
+│           ├── material.py
+│           ├── actor.py
+│           ├── asset.py
+│           └── ...
 │
 ├── src/extension/                # RenderDoc 扩展
 │   ├── renderdoc_facade.py       # API 门面
