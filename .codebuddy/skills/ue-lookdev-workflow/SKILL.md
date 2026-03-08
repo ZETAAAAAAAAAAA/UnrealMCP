@@ -180,3 +180,4 @@ spawn_actor("StaticMeshActor", name="GraySphere",
 - `physical-lighting-parameters.md` - 完整物理灯光参数表、EV 对应关系
 - `hdri-capture-guide.md` - HDRI 拍摄与处理完整流程
 - `lookdev-tools.md` - 辅助工具使用、材质对照表
+- `actor-properties-guide.md` - MCP Actor 属性设置指南

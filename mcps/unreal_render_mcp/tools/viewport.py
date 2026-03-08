@@ -20,7 +20,8 @@ def get_viewport_screenshot(
     output_path: str,
     format: str = "png",
     quality: int = 85,
-    include_ui: bool = False
+    include_ui: bool = False,
+    output_mode: str = "file"
 ) -> Dict[str, Any]:
     """
     Capture a screenshot of the current viewport and save as image file.
@@ -30,12 +31,14 @@ def get_viewport_screenshot(
         format: Image format - "png", "jpg", or "bmp"
         quality: JPEG quality 1-100 (only for jpg)
         include_ui: Whether to include editor UI
+        output_mode: Output mode - "file" (save to disk), "rgba" (return RGBA base64), "rgb" (return RGB base64)
     """
     return send_command("get_viewport_screenshot", {
         "output_path": output_path,
         "format": format,
         "quality": quality,
-        "include_ui": include_ui
+        "include_ui": include_ui,
+        "output_mode": output_mode
     })
 
 

@@ -41,6 +41,7 @@
 #include "Engine/GameViewportClient.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Base64.h"
+#include "RenderingThread.h"
 
 // Level includes
 #include "Editor/UnrealEd/Public/FileHelpers.h"
@@ -66,14 +67,29 @@ TSharedPtr<FJsonObject> FEpicUnrealMCPEnvironmentCommands::HandleGetViewportScre
     {
         bIncludeUI = Params->GetBoolField(TEXT("include_ui"));
     }
+    
+    // Output mode: "file" (default), "rgba", "rgb"
+    FString OutputMode = TEXT("file");
+    Params->TryGetStringField(TEXT("output_mode"), OutputMode);
+    
+    // Force redraw viewport before capture
+    bool bForceRedraw = true;
+    if (Params->HasField(TEXT("force_redraw")))
+    {
+        bForceRedraw = Params->GetBoolField(TEXT("force_redraw"));
+    }
 
     FString OutputPath;
-    if (!Params->TryGetStringField(TEXT("output_path"), OutputPath) || OutputPath.IsEmpty())
+    if (OutputMode == TEXT("file"))
     {
-        return FEpicUnrealMCPCommonUtils::CreateErrorResponse(TEXT("output_path parameter is required"));
+        if (!Params->TryGetStringField(TEXT("output_path"), OutputPath) || OutputPath.IsEmpty())
+        {
+            return FEpicUnrealMCPCommonUtils::CreateErrorResponse(TEXT("output_path parameter is required for file mode"));
+        }
     }
 
     FSceneViewport* TargetViewport = nullptr;
+    FEditorViewportClient* ViewportClient = nullptr;
     FString ViewportType;
     
     if (GEditor)
@@ -93,18 +109,15 @@ TSharedPtr<FJsonObject> FEpicUnrealMCPEnvironmentCommands::HandleGetViewportScre
             FLevelEditorModule* LevelEditorModule = FModuleManager::GetModulePtr<FLevelEditorModule>(TEXT("LevelEditor"));
             if (LevelEditorModule)
             {
-                TSharedPtr<ILevelEditor> LevelEditor = LevelEditorModule->GetFirstLevelEditor();
-                if (LevelEditor.IsValid())
+                TSharedPtr<IAssetViewport> ActiveViewport = LevelEditorModule->GetFirstActiveViewport();
+                if (ActiveViewport.IsValid())
                 {
-                    TSharedPtr<SLevelViewport> ActiveViewport = LevelEditor->GetActiveViewportInterface();
-                    if (ActiveViewport.IsValid())
+                    ViewportClient = &ActiveViewport->GetAssetViewportClient();
+                    TSharedPtr<FSceneViewport> SceneViewport = ActiveViewport->GetSharedActiveViewport();
+                    if (SceneViewport.IsValid())
                     {
-                        TSharedPtr<FSceneViewport> SceneViewport = ActiveViewport->GetSharedActiveViewport();
-                        if (SceneViewport.IsValid())
-                        {
-                            TargetViewport = SceneViewport.Get();
-                            ViewportType = TEXT("Editor");
-                        }
+                        TargetViewport = SceneViewport.Get();
+                        ViewportType = TEXT("Editor");
                     }
                 }
             }
@@ -114,6 +127,20 @@ TSharedPtr<FJsonObject> FEpicUnrealMCPEnvironmentCommands::HandleGetViewportScre
     if (!TargetViewport)
     {
         return FEpicUnrealMCPCommonUtils::CreateErrorResponse(TEXT("No active viewport found"));
+    }
+    
+    // Force viewport redraw
+    if (bForceRedraw)
+    {
+        if (ViewportClient)
+        {
+            ViewportClient->Invalidate();
+        }
+        TargetViewport->Invalidate();
+        TargetViewport->Draw();
+        
+        // Process pending rendering commands
+        FlushRenderingCommands();
     }
     
     FIntPoint ViewportSize = TargetViewport->GetSizeXY();
@@ -133,48 +160,78 @@ TSharedPtr<FJsonObject> FEpicUnrealMCPEnvironmentCommands::HandleGetViewportScre
         return FEpicUnrealMCPCommonUtils::CreateErrorResponse(TEXT("Failed to read viewport pixels"));
     }
     
-    TArray<uint8> ImageData;
-    EImageFormat ImageFormat = EImageFormat::PNG;
-    if (Format == TEXT("jpg") || Format == TEXT("jpeg"))
-    {
-        ImageFormat = EImageFormat::JPEG;
-    }
-    else if (Format == TEXT("bmp"))
-    {
-        ImageFormat = EImageFormat::BMP;
-    }
-    
-    IImageWrapperModule& ImageWrapperModule = FModuleManager::LoadModuleChecked<IImageWrapperModule>(FName("ImageWrapper"));
-    TSharedPtr<IImageWrapper> ImageWrapper = ImageWrapperModule.CreateImageWrapper(ImageFormat);
-    
-    if (!ImageWrapper.IsValid())
-    {
-        return FEpicUnrealMCPCommonUtils::CreateErrorResponse(TEXT("Failed to create image wrapper"));
-    }
-    
-    ImageWrapper->SetRaw(PixelData.GetData(), PixelData.Num() * sizeof(FColor), ViewportSize.X, ViewportSize.Y, ERGBFormat::BGRA, 8);
-    ImageData = ImageWrapper->GetCompressed(Quality);
-    
-    if (ImageData.Num() == 0)
-    {
-        return FEpicUnrealMCPCommonUtils::CreateErrorResponse(TEXT("Failed to compress image"));
-    }
-    
-    bool bSaved = FFileHelper::SaveArrayToFile(ImageData, *OutputPath);
-    
-    if (!bSaved)
-    {
-        return FEpicUnrealMCPCommonUtils::CreateErrorResponse(FString::Printf(TEXT("Failed to save image to: %s"), *OutputPath));
-    }
-    
     TSharedPtr<FJsonObject> ResultObj = MakeShared<FJsonObject>();
     ResultObj->SetBoolField(TEXT("success"), true);
-    ResultObj->SetStringField(TEXT("file_path"), OutputPath);
-    ResultObj->SetStringField(TEXT("format"), Format);
     ResultObj->SetNumberField(TEXT("width"), ViewportSize.X);
     ResultObj->SetNumberField(TEXT("height"), ViewportSize.Y);
-    ResultObj->SetNumberField(TEXT("size_bytes"), ImageData.Num());
     ResultObj->SetStringField(TEXT("viewport_type"), ViewportType);
+    ResultObj->SetNumberField(TEXT("pixel_count"), PixelData.Num());
+    ResultObj->SetStringField(TEXT("storage_format"), TEXT("BGRA8"));
+    
+    // Output RGBA data as base64
+    if (OutputMode == TEXT("rgba") || OutputMode == TEXT("rgb"))
+    {
+        TArray<uint8> RawData;
+        RawData.Reserve(PixelData.Num() * (OutputMode == TEXT("rgba") ? 4 : 3));
+        
+        for (const FColor& Pixel : PixelData)
+        {
+            RawData.Add(Pixel.R);
+            RawData.Add(Pixel.G);
+            RawData.Add(Pixel.B);
+            if (OutputMode == TEXT("rgba"))
+            {
+                RawData.Add(Pixel.A);
+            }
+        }
+        
+        FString Base64Data = FBase64::Encode(RawData);
+        ResultObj->SetStringField(TEXT("pixel_data"), Base64Data);
+        ResultObj->SetStringField(TEXT("data_format"), OutputMode);
+        ResultObj->SetNumberField(TEXT("data_bytes"), RawData.Num());
+    }
+    
+    // Save to file
+    if (OutputMode == TEXT("file") || OutputMode == TEXT("both"))
+    {
+        TArray<uint8> ImageData;
+        EImageFormat ImageFormat = EImageFormat::PNG;
+        if (Format == TEXT("jpg") || Format == TEXT("jpeg"))
+        {
+            ImageFormat = EImageFormat::JPEG;
+        }
+        else if (Format == TEXT("bmp"))
+        {
+            ImageFormat = EImageFormat::BMP;
+        }
+        
+        IImageWrapperModule& ImageWrapperModule = FModuleManager::LoadModuleChecked<IImageWrapperModule>(FName("ImageWrapper"));
+        TSharedPtr<IImageWrapper> ImageWrapper = ImageWrapperModule.CreateImageWrapper(ImageFormat);
+        
+        if (!ImageWrapper.IsValid())
+        {
+            return FEpicUnrealMCPCommonUtils::CreateErrorResponse(TEXT("Failed to create image wrapper"));
+        }
+        
+        ImageWrapper->SetRaw(PixelData.GetData(), PixelData.Num() * sizeof(FColor), ViewportSize.X, ViewportSize.Y, ERGBFormat::BGRA, 8);
+        ImageData = ImageWrapper->GetCompressed(Quality);
+        
+        if (ImageData.Num() == 0)
+        {
+            return FEpicUnrealMCPCommonUtils::CreateErrorResponse(TEXT("Failed to compress image"));
+        }
+        
+        bool bSaved = FFileHelper::SaveArrayToFile(ImageData, *OutputPath);
+        
+        if (!bSaved)
+        {
+            return FEpicUnrealMCPCommonUtils::CreateErrorResponse(FString::Printf(TEXT("Failed to save image to: %s"), *OutputPath));
+        }
+        
+        ResultObj->SetStringField(TEXT("file_path"), OutputPath);
+        ResultObj->SetStringField(TEXT("format"), Format);
+        ResultObj->SetNumberField(TEXT("size_bytes"), ImageData.Num());
+    }
     
     return ResultObj;
 }

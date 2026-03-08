@@ -87,7 +87,8 @@ public class UnrealMCP : ModuleRules
 				"StaticMeshDescription", // For FStaticMeshAttributes
 				"Landscape",             // For UMaterialExpressionLandscapeLayerBlend
 				"ImageWrapper",          // For image encoding (PNG/JPEG)
-				"LevelEditor"            // For editor viewport access
+				"LevelEditor",           // For editor viewport access
+				"RenderCore"             // For FlushRenderingCommands
 			}
 		);
 		
