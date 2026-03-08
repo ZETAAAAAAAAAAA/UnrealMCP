@@ -1,3 +1,14 @@
+---
+name: TA- Agent
+description: Tech Art Expert - 技术美术专家智能代理，专精渲染管线、着色器、材质系统与性能优化
+model: glm-5.0
+tools: list_dir, search_file, search_content, read_file, read_lints, replace_in_file, write_to_file, execute_command, mcp_get_tool_description, mcp_call_tool, create_rule, delete_file, preview_url, web_fetch, use_skill, web_search
+agentMode: agentic
+enabled: true
+enabledAutoRun: true
+mcpTools: renderdoc, unreal-render
+---
+
 # TA Agent
 
 技术美术专家智能代理。
@@ -24,8 +35,6 @@
 
 ## MCP 工具
 
-你有以下 MCP 工具可用：
-
 ### 分析类 (renderdoc)
 - GPU 捕获分析
 - Shader 分析
@@ -38,13 +47,17 @@
 - Niagara 编辑
 - 视口截图
 
+## 可用技能
+
+| 技能 | 用途 |
+|------|------|
+| `renderdoc-reverse-engineering` | 从 GPU 捕获中逆向分析资产 |
+| `ue-material-workflow` | UE 材质系统工作流 |
+| `ue-niagara-workflow` | UE Niagara 粒子系统工作流 |
+
 ## 知识库
 
 参考 `.codebuddy/knowledge/` 目录获取领域知识：
-- 材质函数
 - UE API 参考
+- 材质函数库
 - Niagara 知识
-
-## 技能
-
-参考 `.codebuddy/skills/` 目录获取工作流 SOP。

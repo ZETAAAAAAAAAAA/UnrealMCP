@@ -15,10 +15,10 @@ TA Agent 不只是被动响应工具调用，而是具备：
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                            TA Agent Core                                 │
+│                            TA Agent Core                                │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐                   │
-│  │   Persona    │  │  Knowledge   │  │  Reasoning   │                   │
-│  │   TA 身份    │  │  领域知识    │  │  决策引擎    │                   │
+│  │   Persona    │  │  Knowledge   │  │    Skills    │                   │
+│  │   TA 身份    │  │  领域知识     │  │  工作流 SOP  │                   │
 │  └──────────────┘  └──────────────┘  └──────────────┘                   │
 └───────────────────────────────┬─────────────────────────────────────────┘
                                 │
@@ -39,72 +39,42 @@ TA Agent 不只是被动响应工具调用，而是具备：
 ## 项目结构
 
 ```
-ta-agent-workspace/
+rendering-mcp/
 │
-├── .codebuddy/                   # Agent 核心 (身份、知识、技能、工作流)
-│   ├── agents/                   # Agent 身份定义
-│   │   └── TA Agent.md           # TA 角色
+├── .codebuddy/                   # Agent 核心
+│   ├── agents/                   # Agent 定义
+│   │   └── TA- Agent.md
 │   │
-│   ├── rules/                    # 工作规则 (自动应用)
-│   │   └── rendering-mcp-skills.mdc
+│   ├── rules/                    # 项目规则 (始终加载)
+│   │   └── mcp-development.mdc
 │   │
-│   ├── persona/                  # TA 身份详情
-│   │   └── ta_persona.md
+│   ├── skills/                   # 技能模块 (按需加载)
+│   │   ├── renderdoc-reverse-engineering/
+│   │   ├── ue-material-workflow/
+│   │   └── ue-niagara-workflow/
 │   │
-│   ├── knowledge/                # 领域知识库
-│   │   ├── material-functions/   # 材质函数参考
-│   │   └── ue-api/               # UE API 参考
-│   │
-│   ├── skills/                   # 技能模块（工作流 SOP）
-│   │   ├── lookdev/              # Lookdev 环境
-│   │   ├── renderdoc-fbx-export/ # Mesh 导出
-│   │   ├── renderdoc-material-reconstruction/
-│   │   └── shadertoy-conversion/ # Shadertoy 转换
-│   │
-│   ├── reasoning/                # 推理框架
-│   │   ├── problem_decomposer.py # 问题分解器
-│   │   └── tool_selector.py      # 工具选择器
-│   │
-│   └── workflows/                # 完整工作流定义
-│       ├── capture-to-asset/     # 捕获→资产重建
-│       ├── shader-porting/       # Shader 移植
-│       └── performance-audit/    # 性能审计
+│   └── knowledge/                # 领域知识
+│       ├── mcp-tools/            # MCP 工具详细文档
+│       └── ue-api/               # UE API 差异笔记
 │
-├── mcps/                         # MCP 工具生态
+├── mcps/                         # MCP Server
 │   ├── renderdoc_mcp/            # RenderDoc 分析 MCP
-│   │   └── mcp_server/
-│   │       ├── server.py         # FastMCP 工具定义
-│   │       └── bridge/           # TCP 客户端
-│   │
-│   └── unreal_render_mcp/        # UE 创作类 MCP (模块化)
-│       ├── server.py             # 入口
-│       ├── connection.py         # 连接管理
-│       ├── common.py             # 通用工具
-│       └── tools/                # 工具模块
-│           ├── material.py
-│           ├── actor.py
-│           ├── asset.py
-│           └── ...
+│   └── unreal_render_mcp/        # UE 创作类 MCP
 │
 ├── src/extension/                # RenderDoc 扩展
-│   ├── renderdoc_facade.py       # API 门面
-│   ├── socket_server.py          # TCP 服务端
-│   └── services/                 # 服务分解
 │
 ├── plugins/unreal/               # UE C++ 插件
-│   └── UnrealMCP/                # TCP 服务端 + 反射调用
 │
-└── docs/                         # 文档
-    ├── tools/                    # 工具文档
-    ├── tutorials/                # 教程
-    └── examples/                 # 示例
+└── config/                       # 配置模板
 ```
 
 ---
 
-## MCP 工具参考
+## MCP 概览
 
-### RenderDoc MCP (20 Tools) - 分析类
+### RenderDoc MCP - 分析类
+
+GPU 捕获分析与资产提取工具。
 
 | 类别 | 工具 |
 |------|------|
@@ -114,107 +84,75 @@ ta-agent-workspace/
 | **纹理** | `get_texture_info`, `get_texture_data`, `save_texture` |
 | **网格** | `get_mesh_data`, `export_mesh_as_fbx`, `export_mesh_csv` |
 
-### Unreal Render MCP (26 Tools) - 创作类
+### Unreal Render MCP - 创作类
+
+UE 资产与场景操作工具。
 
 | 类别 | 工具 |
 |------|------|
-| **通用资产** | `create_asset`, `delete_asset`, `get_assets`, `set_asset_properties`, batch_* |
-| **通用 Actor** | `spawn_actor`, `delete_actor`, `get_actors`, `set_actor_properties`, batch_* |
+| **通用资产** | `create_asset`, `delete_asset`, `get_assets`, `set_asset_properties`, `batch_*` |
+| **通用 Actor** | `spawn_actor`, `delete_actor`, `get_actors`, `set_actor_properties`, `batch_*` |
 | **材质图** | `build_material_graph`, `get_material_graph`, `compile_material` |
 | **纹理** | `import_texture`, `set_texture_properties` |
 | **网格** | `import_fbx`, `create_static_mesh_from_data` |
 | **Niagara** | `get_niagara_asset_details`, `update_niagara_asset`, `convert_to_stateless`, ... |
 | **视口** | `get_viewport_screenshot` |
 
+> 详细文档见 `.codebuddy/knowledge/mcp-tools/`
+
 ---
 
-## 安装
+## 初始化
 
-### 前置要求
+### 环境要求
 
-- Python 3.10+
-- RenderDoc 1.20+
-- Unreal Engine 5.3+
+| 依赖 | 版本 |
+|------|------|
+| Python | 3.10+ |
+| RenderDoc | 1.20+ |
+| Unreal Engine | 5.3+ (推荐 5.7) |
 
-### 设置
+### 首次设置
 
 ```bash
-# 1. 克隆并安装
-git clone https://github.com/your-repo/ta-agent-workspace.git
-cd ta-agent-workspace
+# 1. 安装 Python 依赖
 pip install -e .
 
-# 2. 安装 RenderDoc 扩展
-python src/scripts/install_extension.py
+# 2. 初始化 RenderDoc 扩展
+python src/scripts/renderdoc/install_extension.py
 
-# 3. 打开 UE 项目
+# 3. 打开 UE 项目（让引擎自动编译插件）
 # plugins/unreal/UnrealMCP/RenderingMCP/RenderingMCP.uproject
 ```
 
 ### MCP 配置
 
-**Claude Code / CodeBuddy** (`~/.codebuddy/mcp.json`):
+**CodeBuddy / Claude Code** (`~/.codebuddy/mcp.json`):
+
 ```json
 {
   "mcpServers": {
     "renderdoc": {
       "command": "python",
       "args": ["-m", "mcp_server.server"],
-      "cwd": "/path/to/ta-agent-workspace/mcps/renderdoc_mcp"
+      "cwd": "D:/CodeBuddy/rendering-mcp/mcps/renderdoc_mcp"
     },
     "unreal-render": {
       "command": "python",
       "args": ["server.py"],
-      "cwd": "/path/to/ta-agent-workspace/mcps/unreal_render_mcp"
+      "cwd": "D:/CodeBuddy/rendering-mcp/mcps/unreal_render_mcp"
     }
   }
 }
 ```
 
----
+### 开发提醒
 
-## 使用示例
-
-### Agent 工作方式
-
-```
-用户: "帮我从这个 RenderDoc 捕获重建材质"
-
-Agent 思考:
-1. [Persona] 作为 TA，需要先分析捕获
-2. [Decompose] 识别为"材质重建"任务
-3. [Tool Select] 
-   - renderdoc → get_shader_info, get_texture_data
-   - unreal-render → build_material_graph
-4. [Execute] 按工作流执行
-5. [Validate] 截图对比验证
-```
-
-### 具体工具调用
-
-```python
-# 材质重建
-open_capture(capture_path="E:/captures/scene.rdc")
-get_draw_calls(flags_filter=["Drawcall"])
-export_mesh_as_fbx(event_id=5249, output_path="output/mesh.fbx", ...)
-
-# UE 创建
-build_material_graph(
-    material_name="M_Reconstructed",
-    nodes=[...],
-    connections=[...]
-)
-```
-
----
-
-## 工作流
-
-| 工作流 | 描述 |
-|--------|------|
-| **capture-to-asset** | 从捕获重建资产 |
-| **shader-porting** | Shader 移植 |
-| **performance-audit** | 性能审计 |
+| 修改了... | 需要操作 |
+|-----------|----------|
+| MCP 服务器代码 | `Ctrl+Shift+P` → `Reload Window` |
+| UE 插件代码 | 重新编译 UE 项目 |
+| RenderDoc 扩展 | 重启 RenderDoc |
 
 ---
 
