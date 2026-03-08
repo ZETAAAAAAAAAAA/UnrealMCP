@@ -72,6 +72,13 @@ Thumbs.db
 Desktop.ini
 
 # ============================================
+# Local build scripts (user-specific paths)
+# ============================================
+Build.bat
+Build.ps1
+build_logs/
+
+# ============================================
 # Temporary files
 # ============================================
 $null
