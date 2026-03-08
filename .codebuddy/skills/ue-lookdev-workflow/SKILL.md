@@ -99,6 +99,56 @@ Project Settings → Engine → Rendering:
 | Soft Source Radius | 离散度 | 阴影边缘柔和度 |
 | Source Angle | 方向光张角 | 0.5° = 晴天 |
 
+## 基础可照亮场景配置
+
+UE5 默认可照亮场景包含以下必要 Actor：
+
+### 必需 Actor
+
+| Actor | 类型 | 位置 | 作用 |
+|-------|------|------|------|
+| DirectionalLight | 方向光 | (0, 0, 400) | 主光源（太阳/月亮） |
+| SkyLight | 天光 | (0, 0, 600) | 环境反射光 |
+| SkyAtmosphere | 大气 | (0, 0, -6000) | 天空盒、大气散射 |
+| ExponentialHeightFog | 指数高度雾 | (-5600, -50, -6850) | 距离雾效 |
+| VolumetricCloud | 体积云 | (0, 0, 700) | 云层效果 |
+| StaticMeshActor | 地面 | (0, 0, 0) | 接收阴影的基础地面 |
+
+### MCP 创建脚本
+
+```python
+# 1. 创建基础场景
+create_level("/Game/Levels/LookDev")
+
+# 2. 添加方向光（主光源）
+spawn_actor("DirectionalLight", location={"x": 0, "y": 0, "z": 400})
+
+# 3. 添加天光（环境光）
+spawn_actor("SkyLight", location={"x": 0, "y": 0, "z": 600})
+
+# 4. 添加大气效果
+spawn_actor("SkyAtmosphere", location={"x": 0, "y": 0, "z": -6000})
+
+# 5. 添加雾效
+spawn_actor("ExponentialHeightFog", location={"x": -5600, "y": -50, "z": -6850})
+
+# 6. 添加地面
+spawn_actor("StaticMeshActor", location={"x": 0, "y": 0, "z": 0}, 
+            properties={"StaticMeshComponent.StaticMesh": "/Engine/BasicShapes/Plane"})
+
+# 7. 放置灰球
+spawn_actor("StaticMeshActor", name="GraySphere", 
+            location={"x": 0, "y": 0, "z": 50},
+            properties={"StaticMeshComponent.StaticMesh": "/Engine/BasicShapes/Sphere"})
+```
+
+### 注意事项
+
+- **DirectionalLight**: 必须添加，否则场景无直射光照
+- **SkyLight**: 必须添加，否则无环境反射
+- **SkyAtmosphere**: 提供天空背景和大气散射，对 LookDev 很重要
+- **地面**: 必须有接收阴影的表面才能看到光照效果
+
 ## 常见问题
 
 ### Q: EV 值是否必须与拍摄同步？
