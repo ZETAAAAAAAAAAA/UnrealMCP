@@ -17,6 +17,7 @@ provider:
 | Skill 名称 | 用途 |
 |-----------|------|
 | `ue-coding-workflow` | UE C++ 编码、编译、错误处理 |
+| `ue-rendering-pipeline` | UE 渲染管线源码分析、BasePass、Lighting、RHI |
 | `ue-niagara-workflow` | Niagara 粒子系统分析与制作 |
 | `ue-material-workflow` | UE 材质系统操作 |
 | `ue-lookdev-workflow` | 物理灯光环境、HDRI、材质校准 |
